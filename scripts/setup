@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -e
+export TERM="xterm-256color"
 
 cd "$(dirname "$0")/.."
 
@@ -28,4 +29,3 @@ if [ ${BUILD_TYPE} == "run" ]; then
     clear
     python3 -m pip install --requirement requirements.txt
 fi
-
