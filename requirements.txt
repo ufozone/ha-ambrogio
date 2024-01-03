@@ -4,4 +4,4 @@ colorlog==6.8.0
 ruff==0.1.11
 chardet==5.2.0
 async-timeout>=4.0.3
-homeassistant==2023.6.1
+homeassistant==2023.12.4
