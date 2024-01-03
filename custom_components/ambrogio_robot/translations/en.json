@@ -2,20 +2,36 @@
     "config": {
         "step": {
             "user": {
-                "title": "Cloud Service Login",
-                "description": "Garage Name is the collective name for the robots under a single account, Access Token and IMEI can be found in the mobile app. For additional information go to https://github.com/sHedC/homeassistant-ambrogio. More mowers can be added after setup using the device Options.",
+                "title": "Choose Login",
+                "description": "Login using Ambrogio Username/ Password, OAuth with Google/Apple or Manually Configure.",
+                "menu_options": {
+                    "user_pass": "Login with Ambrogio User/ Password",
+                    "oauth": "Login with Google/ Apple OAuth",
+                    "manual": "Configure Manually"
+                }
+            },
+            "user_pass": {
+                "title": "Ambrogio Direct Login",
+                "description": "Enter the Email Address and Login Password for the Ambrogio direct login.",
                 "data": {
-                    "api_token": "API Token (This is the current known token)",
-                    "access_token": "User Access Token",
-                    "robot_name": "Robot Name, you know you have one",
-                    "robot_imei": "Robots IMEI Number"
+                    "email": "Email Address",
+                    "password": "Password"
+                }
+            },
+            "manual": {
+                "title": "Ambrogio Manual Setup",
+                "description": "Enter a Garage Name, the Account Key comes from the Android App. Once setup, use configure options to setup mowers.",
+                "data": {
+                    "name": "Garage Name",
+                    "uid": "Account Key"
                 }
             }
         },
         "error": {
             "invalid_email": "E-Mail is not valid.",
             "invalid_password": "Password is not valid.",
-            "robot_not_found": "Robot Mower is not found or connected properly."
+            "robot_not_found": "Robot Mower is not found or connected properly.",
+            "not_implemented": "Not Yet Implemented."
         },
         "abort": {
             "already_configured": "Device is already configured"

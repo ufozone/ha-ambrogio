@@ -19,13 +19,19 @@ VERSION = "0.0.0"
 MANUFACTURER = "Zucchetti Centro Sistemi"
 ATTRIBUTION = "Data provided gently by Telit IoT Platform"
 
-API_KEY = "DJMYYngGNEit40vA"
+API_KEY = "AIzaSyCUGSbVrwZ3X7BHU6oiUSmdzQwx-QXypUI"
+# API_KEY = "DJMYYngGNEit40vA"
 API_DATETIME_FORMAT_DEFAULT = "%Y-%m-%dT%H:%M:%S.%f%z"
 API_DATETIME_FORMAT_FALLBACK = "%Y-%m-%dT%H:%M:%S%z"
 API_ACK_TIMEOUT = 30
 
 UPDATE_INTERVAL_DEFAULT = 300
 UPDATE_INTERVAL_WORKING = 60
+
+CONF_AUTH_PROVIDER = "provider"
+CONF_EXPIRATION_TIME = "expiration_time"
+CONF_REFRESH_TOKEN = "refresh_token"
+CONF_UID = "uid"
 
 CONF_CONFIRM = "confirm"
 CONF_ROBOT_NAME = "robot_name"
