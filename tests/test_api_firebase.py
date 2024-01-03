@@ -13,7 +13,7 @@ from homeassistant.const import (
 )
 
 from custom_components.ambrogio_robot import DOMAIN
-from custom_components.ambrogio_robot.api_firebase import (
+from custom_components.ambrogio_robot.api.firebase import (
     AmbrogioRobotFirebaseAPI,
     AmbrogioRobotException,
 )

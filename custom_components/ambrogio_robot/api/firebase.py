@@ -8,14 +8,14 @@ import aiohttp
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-GOOGLEAPIS_URL = "https://www.googleapis.com"
-VERIFY_PASSWORD = "/identitytoolkit/v3/relyingparty/verifyPassword"
+GOOGLEAPIS_URL = "https://identitytoolkit.googleapis.com"
+VERIFY_PASSWORD = "/v1/accounts:signInWithPassword"
 
 FIREBASE_URL = "wss://centrosistemi-ambrogioremote.firebaseio.com"
 FIREBASE_DB = "centrosistemi-ambrogioremote"
 FIREBASE_VER = "5"
 
-APP_ID = "AIzaSyCUGSbVrwZ3X7BHU6oiUSmdzQwx-QXypUI"
+API_KEY = "AIzaSyCUGSbVrwZ3X7BHU6oiUSmdzQwx-QXypUI"
 
 
 class AmbrogioRobotException(Exception):
@@ -49,7 +49,7 @@ class AmbrogioRobotFirebaseAPI:
         response = await self._session.post(
             urljoin(
                 GOOGLEAPIS_URL,
-                f"{VERIFY_PASSWORD}?key={APP_ID}",
+                f"{VERIFY_PASSWORD}?key={API_KEY}",
             ),
             data=json.dumps(auth_data),
             headers={
@@ -64,11 +64,7 @@ class AmbrogioRobotFirebaseAPI:
                 response_json["error"]["code"], response_json["error"]["message"]
             )
 
-        valid_data = {
-            "api_token": response_json["localId"],
-            "access_token": response_json["idToken"],
-        }
-        return valid_data
+        return response_json
 
     async def get_robots(self, access_token: str, api_token: str) -> dict:
         """Get the Garage Robots."""

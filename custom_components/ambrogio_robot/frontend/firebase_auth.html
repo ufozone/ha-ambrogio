@@ -1,0 +1,80 @@
+<html>
+<Header>
+    <title>Ambrogio Authentication for HomeAssistant</title>
+    <link rel="stylesheet" href="button_google.css" />
+    <link rel="stylesheet" href="button_apple.css" />
+    <style>
+        body {
+            text-align: center;
+            padding-top: 4rem;
+        }
+    </style>
+</Header>
+
+<body>
+    <button type="button" class="login-with-google-btn" onclick="login('google');">
+        Sign in with Google
+    </button>
+    <br /><br />
+    <button type="button" class="login-with-apple-btn" onclick="login('apple');">
+        Sign in with Apple
+    </button>
+    <br /><br />
+    <div id="err" style="font-size:larger; font-weight:bold; color:red">
+    </div>
+
+    <!-- The Firebase Auth Script gives a cross origin error but this seems to work fine and is ignored. -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js'
+        import {
+            getAuth,
+            signInWithPopup,
+            OAuthProvider,
+            GoogleAuthProvider
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'
+
+        // Get the Query Parameters.
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        const forwardUrl = urlParams.get('forwardUrl');
+        const apiKey = urlParams.get("apiKey");
+
+        const firebaseConfig = {
+            apiKey: apiKey,
+            authDomain: "centrosistemi-ambrogioremote.firebaseapp.com",
+            databaseURL: "https://centrosistemi-ambrogioremote.firebaseio.com",
+            projectId: "centrosistemi-ambrogioremote",
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        async function login(auth_provider) {
+            const provider = (
+                (auth_provider == "google") ?
+                    new GoogleAuthProvider() :
+                    new OAuthProvider('apple.com')
+            );
+
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    const user = result.user;
+                    const stsTokenManager = user.stsTokenManager
+
+                    window.location.href = forwardUrl +
+                        "&email=" + user.email +
+                        "&provider=" + auth_provider +
+                        "&uid="+ user.uid +
+                        "&refreshToken=" + stsTokenManager.refreshToken;
+                }).catch((error) => {
+                    const errorCode = error.code;
+                    const errorMessage = error.message;
+                    document.getElementById("err").innerHTML = errorMessage;
+                });
+        }
+        window.login = login;
+        window.errorMessage = "";
+    </script>
+</body>
+</html>

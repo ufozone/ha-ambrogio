@@ -1,33 +1,40 @@
 """Adds config flow for Ambrogio."""
 import logging
+import urllib.parse
 import voluptuous as vol
 
+from aiohttp import web_response
+
+from homeassistant.components import http
+from homeassistant.components.http.view import HomeAssistantView
+from homeassistant.config_entries import (
+    CONN_CLASS_CLOUD_POLL,
+    ConfigFlow,
+    FlowResult,
+)
 from homeassistant.const import (
     CONF_EMAIL,
     CONF_ERROR,
     CONF_PASSWORD,
+    CONF_NAME,
 )
-from homeassistant.config_entries import (
-    CONN_CLASS_CLOUD_POLL,
-    ConfigFlow,
-    ConfigEntry,
-    FlowResult,
-    OptionsFlow,
-)
-from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api_firebase import AmbrogioRobotFirebaseAPI, AmbrogioRobotException
+from .api.firebase import AmbrogioRobotException, AmbrogioRobotFirebaseAPI
 from .const import (
+    API_KEY,
+    CONF_AUTH_PROVIDER,
+    CONF_REFRESH_TOKEN,
+    CONF_UID,
     DOMAIN,
-    UPDATE_INTERVAL_DEFAULT,
-    UPDATE_INTERVAL_WORKING,
-    CONF_SCAN_INTERVAL_DEFAULT,
-    CONF_SCAN_INTERVAL_WORKING,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+
+HEADER_FRONTEND_BASE = "HA-Frontend-Base"
+AUTH_CALLBACK_PATH = "/auth/ambrogio_robot/callback"
+AUTH_CALLBACK_NAME = "auth:ambrogio_robot:callback"
 
 
 class AmbrogioFlowHandler(ConfigFlow, domain=DOMAIN):
@@ -36,28 +43,54 @@ class AmbrogioFlowHandler(ConfigFlow, domain=DOMAIN):
     # Used to call the migration method if the verison changes.
     VERSION = 1
     CONNECTION_CLASS = CONN_CLASS_CLOUD_POLL
+    auth_data: dict = {}
 
     async def async_step_user(self, user_input: dict | None = None) -> FlowResult:
-        """Handle the flow for setup."""
+        """Show the Setup Menu."""
+
+        return self.async_show_menu(
+            step_id="user",
+            menu_options={
+                "user_pass",
+                "oauth",
+                "manual",
+            },
+        )
+
+    async def async_step_user_pass(self, user_input: dict | None = None) -> FlowResult:
+        """Handle Firebase user/password signin."""
         _errors: dict[str, str] = {}
 
         if user_input is not None:
-            result = await authenticate(
-                self.hass, user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
-            )
-            if CONF_ERROR in result:
-                _errors["base"] = result[CONF_ERROR]
+            api = AmbrogioRobotFirebaseAPI(async_get_clientsession(self.hass))
+            try:
+                response_json = await api.verify_password(
+                    user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
+                )
+            except AmbrogioRobotException as exp:
+                _LOGGER.error("Google APIS Auth Failed: %s", exp)
+
+            if CONF_ERROR in response_json:
+                _errors["base"] = response_json[CONF_ERROR]
             else:
+                # Get all the valid data from the response.
+                self.auth_data = {
+                    CONF_NAME: response_json["email"],
+                    CONF_UID: response_json["localId"],
+                    CONF_AUTH_PROVIDER: "user_password",
+                    CONF_REFRESH_TOKEN: response_json["refreshToken"],
+                }
+
                 # Setup the Unique ID and check if already configured
-                await self.async_set_unique_id(user_input[CONF_EMAIL])
+                await self.async_set_unique_id(self.auth_data[CONF_NAME])
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=user_input[CONF_EMAIL], data=user_input
+                    title=self.auth_data[CONF_NAME], data=self.auth_data
                 )
 
         return self.async_show_form(
-            step_id="user",
+            step_id="user_pass",
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -82,72 +115,117 @@ class AmbrogioFlowHandler(ConfigFlow, domain=DOMAIN):
             last_step=True,
         )
 
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        """Return the option flow handler."""
-        return AmbrogioOptionsFlowHandler(config_entry)
+    async def async_step_oauth(self, user_input: dict | None = None) -> FlowResult:
+        """Handle Google/ Apple OAuth signin."""
+        if not user_input:
+            self.hass.http.register_view(AmbrogioAuthorizationCallbackView)
+            if (req := http.current_request.get()) is None:
+                raise RuntimeError("No current request in context")
+            if (hass_url := req.headers.get(HEADER_FRONTEND_BASE)) is None:
+                raise RuntimeError("No header in request")
 
+            self.hass.http.register_static_path(
+                "/ambrogio_robot",
+                self.hass.config.path(
+                    "custom_components/ambrogio_robot/frontend/resources"
+                ),
+            )
+            self.hass.http.register_static_path(
+                "/ambrogio_robot/oauth",
+                self.hass.config.path(
+                    "custom_components/ambrogio_robot/frontend/firebase_auth.html"
+                ),
+            )
 
-class AmbrogioOptionsFlowHandler(OptionsFlow):
-    """Ambrogio config options flow handler."""
+            forward_url = f"{hass_url}{AUTH_CALLBACK_PATH}?flow_id={self.flow_id}"
+            AUTH_URL = "/ambrogio_robot/oauth?{}"
+            parameters = {
+                "forwardUrl": forward_url,
+                "apiKey": API_KEY,
+            }
+            url = AUTH_URL.format(urllib.parse.urlencode(parameters))
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize HACS options flow."""
-        self.config_entry = config_entry
-        self.options = dict(config_entry.options)
+            return self.async_external_step(
+                step_id="oauth",
+                url=url,
+            )
 
-    async def async_step_init(
-        self,
-        user_input: dict[str, any] | None = None,  # pylint: disable=unused-argument
+        self.auth_data = user_input
+        return self.async_external_step_done(next_step_id="oauth_finish")
+
+    async def async_step_oauth_finish(
+        self, user_input: dict | None = None
     ) -> FlowResult:
-        """Manage the options."""
-        return await self.async_step_user()
+        """Handle the flow for the OAuth Finish process."""
+        # Check this is unique
+        await self.async_set_unique_id(self.auth_data[CONF_NAME])
+        self._abort_if_unique_id_configured()
 
-    async def async_step_user(
-        self, user_input: dict[str, any] | None = None
-    ) -> FlowResult:
-        """Handle a flow initialized by the user."""
+        return self.async_create_entry(
+            title=self.auth_data[CONF_NAME], data=self.auth_data
+        )
+
+    async def async_step_manual(self, user_input: dict | None = None) -> FlowResult:
+        """Handle Manual Configuration."""
+        _errors: dict[str, str] = {}
+
         if user_input is not None:
-            self.options.update(user_input)
-            return await self._update_options()
+            self.auth_data = {
+                CONF_NAME: user_input[CONF_NAME],
+                CONF_UID: user_input[CONF_UID],
+                CONF_AUTH_PROVIDER: "manual",
+            }
+
+        _errors["base"] = "not_implemented"
 
         return self.async_show_form(
-            step_id="user",
+            step_id="manual",
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_SCAN_INTERVAL_DEFAULT,
-                        default=self.options.get(
-                            CONF_SCAN_INTERVAL_DEFAULT, UPDATE_INTERVAL_DEFAULT
+                        CONF_NAME,
+                        default=(user_input or {}).get(CONF_NAME),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT
                         ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=120, max=600)),
+                    ),
                     vol.Required(
-                        CONF_SCAN_INTERVAL_WORKING,
-                        default=self.options.get(
-                            CONF_SCAN_INTERVAL_WORKING, UPDATE_INTERVAL_WORKING
+                        CONF_UID,
+                        default=(user_input or {}).get(CONF_UID),
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT
                         ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=10, max=120)),
+                    ),
                 }
             ),
-        )
-
-    async def _update_options(self) -> FlowResult:
-        """Update config entry options."""
-        return self.async_create_entry(
-            title=self.config_entry.data.get(CONF_EMAIL), data=self.options
+            errors=_errors,
+            last_step=True,
         )
 
 
-async def authenticate(
-    hass: HomeAssistant, email: str, password: str
-) -> dict[str, any]:
-    """Authenticate and Setup Robots based on Google Login."""
-    api = AmbrogioRobotFirebaseAPI(async_get_clientsession(hass))
-    try:
-        tokens = await api.verify_password(email, password)
-    except AmbrogioRobotException as exp:
-        _LOGGER.error("Google APIS Auth Failed: %s", exp)
-        return {CONF_ERROR: str(exp.message).lower()}
+class AmbrogioAuthorizationCallbackView(HomeAssistantView):
+    """Handle Callback from external auth."""
 
-    return tokens
+    url = AUTH_CALLBACK_PATH
+    name = AUTH_CALLBACK_NAME
+    requires_auth = False
+
+    async def get(self, request):
+        """Receive authorization confirmation."""
+        hass = request.app["hass"]
+        await hass.config_entries.flow.async_configure(
+            flow_id=request.query["flow_id"],
+            user_input={
+                CONF_NAME: request.query["email"],
+                CONF_AUTH_PROVIDER: request.query["provider"],
+                CONF_UID: request.query["uid"],
+                CONF_REFRESH_TOKEN: request.query["refreshToken"],
+            },
+        )
+
+        return web_response.Response(
+            headers={"content-type": "text/html"},
+            text="<script>window.close()</script>Success! This window can be closed",
+        )

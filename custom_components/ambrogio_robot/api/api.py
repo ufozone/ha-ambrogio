@@ -8,7 +8,7 @@ import socket
 import aiohttp
 import async_timeout
 
-from .const import LOGGER
+from ..const import LOGGER
 
 
 class AmbrogioRobotApiClientError(Exception):
